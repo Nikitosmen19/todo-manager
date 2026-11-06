@@ -1,26 +1,114 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
+
 import * as vscode from 'vscode';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
-
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "todo-manager" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('todo-manager.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from TODO Manager!');
-	});
-
-	context.subscriptions.push(disposable);
+// Одна найденная TODO-задача
+interface TodoItem {
+    file: vscode.Uri;
+    line: number;
+    text: string;
 }
 
-// This method is called when your extension is deactivated
+// Элемент дерева в боковой панели
+class TodoProvider implements vscode.TreeDataProvider<TodoItem> {
+    private todos: TodoItem[] = [];
+
+    private changeEmitter = new vscode.EventEmitter<void>();
+    readonly onDidChangeTreeData = this.changeEmitter.event;
+
+    getTreeItem(item: TodoItem): vscode.TreeItem {
+        const treeItem = new vscode.TreeItem(item.text);
+
+        treeItem.description = `${vscode.workspace.asRelativePath(item.file)}:${item.line + 1}`;
+
+        treeItem.command = {
+            command: 'todo-manager.openTodo',
+            title: 'Open TODO',
+            arguments: [item]
+        };
+
+        return treeItem;
+    }
+
+    getChildren(): TodoItem[] {
+        return this.todos;
+    }
+
+    async refresh() {
+        this.todos = [];
+
+        const files = await vscode.workspace.findFiles(
+            '**/*',
+            '**/{node_modules,out,.git,todo-manager}/**'
+        );
+
+        for (const file of files) {
+            const document = await vscode.workspace.openTextDocument(file);
+
+            for (let i = 0; i < document.lineCount; i++) {
+                const line = document.lineAt(i).text;
+
+                const isTodoComment =
+    /(\/\/|\/\*|\*|<!--|^\s*#).*?\bTODO\b/.test(line);
+
+                if (isTodoComment) {
+                    this.todos.push({
+                        file,
+                        line: i,
+                        text: line.trim()
+                    });
+                }
+            }
+        }
+
+        this.changeEmitter.fire();
+    }
+}
+
+export function activate(context: vscode.ExtensionContext) {
+    const provider = new TodoProvider();
+
+    vscode.window.registerTreeDataProvider('todoManager', provider);
+
+    const openCommand = vscode.commands.registerCommand(
+        'todo-manager.openTodo',
+        (item: TodoItem) => {
+            vscode.workspace.openTextDocument(item.file).then(document => {
+                vscode.window.showTextDocument(document).then(editor => {
+                    const position = new vscode.Position(item.line, 0);
+                    editor.selection = new vscode.Selection(position, position);
+                    editor.revealRange(new vscode.Range(position, position));
+                });
+            });
+        }
+    );
+
+    const refreshCommand = vscode.commands.registerCommand(
+        'todo-manager.refresh',
+        () => provider.refresh()
+    );
+
+    context.subscriptions.push(openCommand, refreshCommand);
+    const watcher = vscode.workspace.createFileSystemWatcher('**/*');
+
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+
+const scheduleRefresh = () => {
+    if (refreshTimer) {
+        clearTimeout(refreshTimer);
+    }
+
+    refreshTimer = setTimeout(() => {
+        provider.refresh();
+    }, 300);
+};
+
+watcher.onDidCreate(scheduleRefresh);
+watcher.onDidChange(scheduleRefresh);
+watcher.onDidDelete(scheduleRefresh);
+
+context.subscriptions.push(watcher);
+
+    provider.refresh();
+}
+
 export function deactivate() {}

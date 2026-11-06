@@ -11,17 +11,32 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:todo-manager.helloWorld"
-  ],
+  "onCommand:todo-manager.helloWorld",
+  "onCommand:todo-manager.refresh",
+  "onView:todoManager"
+],
   "main": "./out/extension.js",
-  "contributes": {
-    "commands": [
+  
+"contributes": {
+  "commands": [
+    {
+      "command": "todo-manager.helloWorld",
+      "title": "TODO Manager: Hello World"
+    },
+    {
+    "command": "todo-manager.refresh",
+    "title": "TODO Manager: Refresh"
+  }
+  ],
+  "views": {
+    "explorer": [
       {
-        "command": "todo-manager.helloWorld",
-        "title": "TODO Manager: Hello World"
+        "id": "todoManager",
+        "name": "TODO Manager"
       }
     ]
-  },
+  }
+},
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./"
